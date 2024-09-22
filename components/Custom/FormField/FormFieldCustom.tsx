@@ -1,3 +1,4 @@
+import React from 'react'
 import { Control, FieldPath, FieldValues } from 'react-hook-form'
 import {
    FormControl,
@@ -7,7 +8,6 @@ import {
    FormLabel,
    FormMessage
 } from '../../ui/form'
-import { Input } from '../../ui/input'
 
 interface IProps<TFieldValues extends FieldValues> {
    formController: Control<TFieldValues> // Tipo correto para `form`
@@ -15,6 +15,7 @@ interface IProps<TFieldValues extends FieldValues> {
    placeholder: string
    description?: string
    name: FieldPath<TFieldValues>
+   children: JSX.Element
 }
 
 export const FormFieldCustom = <TFieldValues extends FieldValues>({
@@ -22,7 +23,8 @@ export const FormFieldCustom = <TFieldValues extends FieldValues>({
    label,
    placeholder,
    description,
-   name
+   name,
+   children
 }: IProps<TFieldValues>): JSX.Element => {
    return (
       <FormField
@@ -35,10 +37,11 @@ export const FormFieldCustom = <TFieldValues extends FieldValues>({
                   <FormDescription>{description}</FormDescription>
                </div>
                <FormControl>
-                  <Input
-                     placeholder={placeholder}
-                     {...field}
-                  />
+                  {React.cloneElement(children as React.ReactElement, {
+                     ...field,
+                     value: field.value || '',
+                     placeholder: placeholder
+                  })}
                </FormControl>
                <FormMessage />
             </FormItem>
