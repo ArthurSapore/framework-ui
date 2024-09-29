@@ -7,7 +7,7 @@ import {
    FormItem,
    FormLabel,
    FormMessage
-} from '../../ui/form'
+} from '../../../ui/form'
 
 interface IProps<TFieldValues extends FieldValues> {
    formController: Control<TFieldValues> // Tipo correto para `form`

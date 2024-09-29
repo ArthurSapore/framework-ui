@@ -14,7 +14,7 @@ import {
 
 import { InfoCircledIcon } from '@radix-ui/react-icons'
 import { cn } from '../../lib/utils'
-import { TooltipCustom } from '../Custom/Tooltip/TooltipCustom'
+import { TooltipCustom } from '../Custom/tooltip/TooltipCustom'
 import { Label } from './label'
 
 const Form = FormProvider
