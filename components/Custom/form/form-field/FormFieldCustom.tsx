@@ -11,7 +11,7 @@ import {
 
 interface IProps<TFieldValues extends FieldValues> {
    formController: Control<TFieldValues> // Tipo correto para `form`
-   label: string
+   label?: string
    placeholder: string
    description?: string
    name: FieldPath<TFieldValues>
