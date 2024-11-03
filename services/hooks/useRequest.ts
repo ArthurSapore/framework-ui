@@ -5,97 +5,10 @@ import { jwtDecode } from 'jwt-decode'
 import { RequestTP } from '../types/requestTP'
 
 const ABORT_SIGNAL_TIMEOUT = 3000 //ms
-
-function newAbortSignal(timeoutMs: number): AbortSignal  {
-   const abortController = new AbortController();
-   setTimeout(() => abortController.abort(), timeoutMs || 0);
- 
-   return abortController.signal;
-}
-
 const axiosInstance = axios.create()
 
-axiosInstance.interceptors.request.use(async (req: InternalAxiosRequestConfig) => {
-   const user = useUserStore.getState().user
-   const refreshLoggedUserData = useUserStore.getState().setUser
-   const logoutUser = useUserStore.getState().clearUser
-
-   if (user?.accessToken) {
-      const jwtExpirationDate = jwtDecode(user.accessToken).exp
-
-      const isJwtExpired =
-         jwtExpirationDate && compareAsc(new Date(), fromUnixTime(jwtExpirationDate)) > 0
-
-      if (isJwtExpired) {
-         const newUserAccessToken = await refreshTokenRequest()
-
-         if (!newUserAccessToken) {
-            logoutUser()
-            return Promise.reject(new Error('Unauthorized: No access token'))
-         }
-
-         refreshLoggedUserData({ ...user, accessToken: newUserAccessToken! })
-         if (req.headers) req.headers['Authorization'] = `Bearer ${newUserAccessToken}`
-      }
-
-      if (req.headers) req.headers['Authorization'] = `Bearer ${user.accessToken}`
-
-      return req
-   }
-
-   logoutUser()
-   return Promise.reject(new Error('Unauthorized access'))
-})
-
-axiosInstance.interceptors.response.use(
-   (response) => {
-      return response
-   },
-   async (error) => {
-      const axiosError = error as AxiosError
-
-      const user = useUserStore.getState().user
-      const refreshLoggedUserData = useUserStore.getState().setUser
-      const logoutUser = useUserStore.getState().clearUser
-
-      if (axiosError.response?.status === 401) {
-         if (user?.accessToken) {
-            const jwtExpirationDate = jwtDecode(user.accessToken).exp
-
-            const isJwtExpired =
-               jwtExpirationDate &&
-               compareAsc(new Date(), fromUnixTime(jwtExpirationDate)) > 0
-
-            if (isJwtExpired) {
-               const newUserAccessToken = await refreshTokenRequest()
-               if (newUserAccessToken) {
-                  refreshLoggedUserData({ ...user, accessToken: newUserAccessToken! })
-
-                  if (axiosError.config) {
-                     axiosError.config.headers['Authorization'] =
-                        `Bearer ${newUserAccessToken}`
-
-                     return axios(axiosError.config)
-                  }
-               }
-
-               logoutUser()
-               return Promise.reject(new Error('Unauthorized: No access token'))
-            }
-
-            if (axiosError.config) {
-               return axios(axiosError.config)
-            }
-         }
-
-         logoutUser()
-         return Promise.reject(new Error('Unauthorized: No access token'))
-      }
-
-      return Promise.reject(error)
-   }
-)
-
+let isRefreshing = false
+let pendingRequests: ((token: string) => void)[] = []
 
 type UseRequestResponse<T, K> = {
    runRequest: (apiConfig: RequestTP<T>) => Promise<K | void>
@@ -126,17 +39,105 @@ export function useRequest<T, K>(): UseRequestResponse<T, K> {
    }
 }
 
-export async function refreshTokenRequest(): Promise<string | undefined> {
+async function refreshTokenRequest(): Promise<string | undefined> {
    try {
-      const response = await axios<string | undefined>({
-         baseURL: '',
-         method: 'GET',
-         url: ''
-      })
-
+      const response = await axios.get<string>('')
       return response.data
    } catch (error) {
       const axiosError = error as AxiosError
-      console.error('Failed to resend the request:', axiosError)
+      console.error('Failed to refresh token:', axiosError)
    }
 }
+
+
+function newAbortSignal(timeoutMs: number): AbortSignal  {
+   const abortController = new AbortController();
+   setTimeout(() => abortController.abort(), timeoutMs || 0);
+   return abortController.signal;
+}
+
+axiosInstance.interceptors.request.use(async (req: InternalAxiosRequestConfig) => {
+   const { user, clearUser: logoutUser, setUser: refreshLoggedUserData } = useUserStore.getState()
+
+   if (user?.accessToken) {
+      const jwtExpirationDate = jwtDecode<{ exp: number }>(user.accessToken).exp
+      const isJwtExpired = jwtExpirationDate && compareAsc(new Date(), fromUnixTime(jwtExpirationDate)) > 0
+
+      if (isJwtExpired) {
+         if (!isRefreshing) {
+            isRefreshing = true
+            const newUserAccessToken = await refreshTokenRequest()
+
+            if (newUserAccessToken) {
+               refreshLoggedUserData({ ...user, accessToken: newUserAccessToken })
+
+               pendingRequests.forEach(callback => callback(newUserAccessToken))
+               pendingRequests = [] 
+               isRefreshing = false
+            } else {
+               logoutUser()
+               isRefreshing = false
+               return Promise.reject(new Error('Unauthorized: No access token'))
+            }
+         }
+
+         return new Promise((resolve) => {
+            pendingRequests.push((token: string) => {
+               if (req.headers) {
+                  req.headers['Authorization'] = `Bearer ${token}`
+                  resolve(req)
+               }
+            })
+         })
+      }
+
+      req.headers['Authorization'] = `Bearer ${user.accessToken}`
+   }
+
+   return req
+}, (error) => {
+   return Promise.reject(error)
+})
+
+axiosInstance.interceptors.response.use(
+   (response) => response,
+   async (error) => {
+      const { user, clearUser: logoutUser, setUser: refreshLoggedUserData } = useUserStore.getState()
+      const axiosError = error as AxiosError
+
+      if (axiosError.response?.status === 401 && user?.accessToken) {
+         const jwtExpirationDate = jwtDecode<{ exp: number }>(user.accessToken).exp
+         const isJwtExpired = jwtExpirationDate && compareAsc(new Date(), fromUnixTime(jwtExpirationDate)) > 0
+
+         if (isJwtExpired) {
+            if (!isRefreshing) {
+               isRefreshing = true
+               const newUserAccessToken = await refreshTokenRequest()
+
+               if (newUserAccessToken) {
+                  refreshLoggedUserData({ ...user, accessToken: newUserAccessToken })
+
+                  pendingRequests.forEach(callback => callback(newUserAccessToken))
+                  pendingRequests = []
+                  isRefreshing = false
+               } else {
+                  logoutUser()
+                  isRefreshing = false
+                  return Promise.reject(new Error('Unauthorized: No access token'))
+               }
+            }
+
+            return new Promise((resolve) => {
+               pendingRequests.push((token: string) => {
+                  if (axiosError.config) {
+                     axiosError.config.headers['Authorization'] = `Bearer ${token}`
+                     resolve(axios(axiosError.config))
+                  }
+               })
+            })
+         }
+      }
+
+      return Promise.reject(error)
+   }
+)

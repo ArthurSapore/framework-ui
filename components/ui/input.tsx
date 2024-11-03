@@ -30,14 +30,14 @@ interface InputComposition
 }
 
 const InputPassword = React.forwardRef<HTMLInputElement>(({ ...props }) => {
-   const [isEyeOpen, setIsEyeOpen] = React.useState(false)
+   const [isPasswordVisible, setIsPasswordVisible] = React.useState(false)
    const inputRef = React.useRef<HTMLInputElement>(null)
    const removePasswordTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(
       null
    )
 
    const togglePasswordVisibility = () => {
-      setIsEyeOpen((prev) => !prev)
+      setIsPasswordVisible((prev) => !prev)
 
       removePasswordTimeoutRef.current = setTimeout(() => {
          if (inputRef.current) {
@@ -58,29 +58,26 @@ const InputPassword = React.forwardRef<HTMLInputElement>(({ ...props }) => {
 
    return (
       <div className="relative w-full">
-         <input
-            type={isEyeOpen ? 'text' : 'password'}
-            className={cn(
-               'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 pr-10 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
-            )}
+         <Input
+            type={isPasswordVisible ? 'text' : 'password'}
             ref={inputRef}
             {...props}
          />
          <button
             type="button"
-            aria-label={isEyeOpen ? 'Hide password' : 'Show password'}
+            aria-label={isPasswordVisible ? 'Hide password' : 'Show password'}
             onClick={togglePasswordVisibility}
             className="absolute inset-y-0 right-0 flex items-center px-2 text-gray-600"
          >
-            {isEyeOpen ? <EyeIcon size={15} /> : <EyeOffIcon size={15} />}
+            {isPasswordVisible ? <EyeIcon size={15} /> : <EyeOffIcon size={15} />}
          </button>
       </div>
    )
 })
 
+InputPassword.displayName = 'InputPassword'
+
 const InputWithComposition = Input as InputComposition
 InputWithComposition.Password = InputPassword
-
-Input.displayName = 'Input'
 
 export { InputWithComposition as Input }
